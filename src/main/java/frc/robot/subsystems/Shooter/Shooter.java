@@ -14,6 +14,7 @@ import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.units.measure.Velocity;
 
 import org.littletonrobotics.junction.AutoLog;
 import org.littletonrobotics.junction.Logger;
@@ -22,6 +23,7 @@ import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.MotionMagicVelocityVoltage;
+import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.sim.TalonFXSimState;
@@ -94,7 +96,7 @@ public class Shooter extends SubsystemBase {
 
 
 
-  private final MotionMagicVelocityVoltage mmRequest = new MotionMagicVelocityVoltage(0);
+  private final VelocityVoltage shooterVoltage = new VelocityVoltage(0);
 
   public double testRpm = 0.0;
 
@@ -120,38 +122,31 @@ public class Shooter extends SubsystemBase {
   private WantedState wantedState = WantedState.OFF;
   private CurrentState currentState = CurrentState.OFF;
 
-  private double targetVelocity = 0.0;
+  private double targetRPS = 0.0;
   private double spindexerPulseUntilSeconds = 0.0;
   private boolean spindexerManualEnabled = false;
+  private Follower follower = new Follower(shooterLeaderMotor.getDeviceID(), MotorAlignmentValue.Opposed);
 
 
   public Shooter() {
 
-    shooterFollower.setControl(new Follower(shooterLeaderMotor.getDeviceID(), MotorAlignmentValue.Opposed));
     
-    var talonFXConfigs = new TalonFXConfiguration();
+   TalonFXConfiguration config = new TalonFXConfiguration();
+        config.Slot0.kV = 0.121934; // ~12V at 100 rps (6000 rpm) for Kraken X60
+        config.Slot0.kP = 0.5;
+        config.CurrentLimits.SupplyCurrentLimit =140;
+                config.CurrentLimits.StatorCurrentLimitEnable = false;
 
-    var slot0Configs = talonFXConfigs.Slot0;
-    slot0Configs.kS = 0.25;
-    slot0Configs.kV = 0.1;
-    slot0Configs.kA = 0.01;
-    slot0Configs.kP = 3;
-    slot0Configs.kI = 0;
-    slot0Configs.kD = 0;
 
-    var motionMagicConfigs = talonFXConfigs.MotionMagic;
-    motionMagicConfigs.MotionMagicAcceleration = 400;
-    motionMagicConfigs.MotionMagicJerk = 4000;
-    
 
   // Set motors to coast (neutral) mode for shooter leader and follower
-  talonFXConfigs.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+  config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+    shooterFollower.setControl(follower);
 
-  shooterLeaderMotor.getConfigurator().apply(talonFXConfigs);
-  shooterFollower.getConfigurator().apply(talonFXConfigs);
+  shooterLeaderMotor.getConfigurator().apply(config);
+  shooterFollower.getConfigurator().apply(config);
 
   // Preserve existing application for spindexer wheel as well
-  spindexerWheelMotor.getConfigurator().apply(talonFXConfigs);
 
   if (RobotBase.isSimulation()) {
     shooterLeaderSim = shooterLeaderMotor.getSimState();
@@ -225,8 +220,8 @@ public class Shooter extends SubsystemBase {
     inputs.shooterVelocity = shooterLeaderMotor.getVelocity().getValueAsDouble();
     inputs.spindexerSpinnerVelocity = spindexerSpinnerMotor.getVelocity().getValueAsDouble();
     inputs.spindexerWheelVelocity = spindexerWheelMotor.getVelocity().getValueAsDouble();
-    inputs.shooterAtVelocity = Math.abs(shooterLeaderMotor.getVelocity().getValueAsDouble() - targetVelocity) < 3;
-    inputs.targetVelocity = targetVelocity;
+    inputs.shooterAtVelocity = Math.abs(shooterLeaderMotor.getVelocity().getValueAsDouble() - targetRPS) < 3;
+    inputs.targetVelocity = targetRPS;
     inputs.shooterAppliedVoltage = shooterLeaderMotor.getMotorVoltage().getValueAsDouble();
     inputs.shooterCurrent = shooterLeaderMotor.getStatorCurrent().getValueAsDouble();
     inputs.currentState = currentState.toString();
@@ -259,10 +254,10 @@ public class Shooter extends SubsystemBase {
         currentState = CurrentState.PRE_SHOOT;
         break;
       case SHOOT:
-        if(shooterLeaderMotor.getVelocity().getValueAsDouble() > targetVelocity-4){
+        if(shooterLeaderMotor.getVelocity().getValueAsDouble() > targetRPS-4){
           currentState = CurrentState.SHOOT;
         }
-        else if(shooterLeaderMotor.getVelocity().getValueAsDouble() < targetVelocity- 4){
+        else if(shooterLeaderMotor.getVelocity().getValueAsDouble() < targetRPS- 4){
           currentState = CurrentState.PRE_SHOOT;
         }
         break;
@@ -277,24 +272,23 @@ public class Shooter extends SubsystemBase {
   }
 
   private void applyStates() {
-             StatusSignal<AngularVelocity> shootSpeed = shooterLeaderMotor.getVelocity();
 
     switch (currentState) {
       case OFF:
         shooterLeaderMotor.setVoltage(0);;
-        spindexerSpinnerMotor.setVoltage(2);
+        spindexerSpinnerMotor.setVoltage(0);
         spindexerWheelMotor.setVoltage(0);;
 
         break;
 
       case PRE_SHOOT:
-               shooterLeaderMotor.setControl(mmRequest.withVelocity(targetVelocity));
+        shooterLeaderMotor.setControl(shooterVoltage.withVelocity(targetRPS));
 
         spindexerSpinnerMotor.setVoltage(2);
         spindexerWheelMotor.setVoltage(0);
         break;
       case SHOOT:
-                shooterLeaderMotor.setControl(mmRequest.withVelocity(targetVelocity));
+          shooterLeaderMotor.setControl(shooterVoltage.withVelocity(targetRPS));
 
         spindexerSpinnerMotor.setVoltage(6);
         spindexerWheelMotor.setVoltage(5);
@@ -325,7 +319,7 @@ public class Shooter extends SubsystemBase {
 
   public void setOff() {
     wantedState = WantedState.OFF;
-    targetVelocity = 0.0;
+    targetRPS = 0.0;
   }
 
   public double rps(){
@@ -334,22 +328,22 @@ public class Shooter extends SubsystemBase {
 
 
   public void shoot(double rps){
-    targetVelocity = rps;
+    targetRPS = rps;
     wantedState = WantedState.SHOOT;
 
   }
 
   public void preShoot(double rps){
-    targetVelocity = rps;
+    targetRPS = rps;
     wantedState = WantedState.PRE_SHOOT;
   }
 
   public boolean isAtVelocity(){
-    return  Math.abs(shooterLeaderMotor.getVelocity().getValueAsDouble() - targetVelocity) < 5.0;
+    return  Math.abs(shooterLeaderMotor.getVelocity().getValueAsDouble() - targetRPS) < 5.0;
   }
 
-  public double getTargetVelocity() {
-    return targetVelocity;
+  public double getTargetRPS() {
+    return targetRPS;
   }
 
   public void triggerSpindexerPulse() {

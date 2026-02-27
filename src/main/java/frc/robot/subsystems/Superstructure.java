@@ -27,11 +27,13 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 import frc.robot.Constants;
+import frc.robot.Robot;
 import frc.robot.subsystems.Hood.Hood;
 import frc.robot.subsystems.Intake.Intake;
 import frc.robot.subsystems.Shooter.Shooter;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.util.HubShotSolver;
+import frc.robot.util.LookUpTable;
 
 import static edu.wpi.first.units.Units.Degrees;
 import static edu.wpi.first.units.Units.Meters;
@@ -98,12 +100,17 @@ public class Superstructure extends SubsystemBase{
         NetworkTableInstance.getDefault()
             .getDoubleTopic("/Dashboard/HoodAngleDeg")
             .subscribe(0.0);
+    private final DoubleSubscriber shooterBoostRpmSub =
+        NetworkTableInstance.getDefault()
+            .getDoubleTopic("/Dashboard/ShooterBoostRPM")
+            .subscribe(0.0);
     private final BooleanSubscriber spindexerEnabledSub =
         NetworkTableInstance.getDefault()
             .getBooleanTopic("/Dashboard/Spindexer")
             .subscribe(false);
     private double dashboardShooterRpm = 0.0;
     private double dashboardHoodAngleDeg = 0.0;
+    private double dashboardShooterBoostRpm = 0.0;
     private boolean dashboardSpindexerEnabled = false;
     private long lastDashboardSetpointChange = 0;
 
@@ -188,11 +195,13 @@ public class Superstructure extends SubsystemBase{
     private void updateDashboardControls() {
         long shooterChange = shooterTargetRpmSub.getLastChange();
         long hoodChange = hoodAngleDegSub.getLastChange();
-        long latestChange = Math.max(shooterChange, hoodChange);
+        long boostChange = shooterBoostRpmSub.getLastChange();
+        long latestChange = Math.max(shooterChange, Math.max(hoodChange, boostChange));
         if (latestChange > lastDashboardSetpointChange) {
             lastDashboardSetpointChange = latestChange;
             dashboardShooterRpm = shooterTargetRpmSub.get();
             dashboardHoodAngleDeg = hoodAngleDegSub.get();
+            dashboardShooterBoostRpm = shooterBoostRpmSub.get();
             wantedState = SuperstructureWantedState.DASHBOARD;
         }
 
@@ -267,7 +276,7 @@ public class Superstructure extends SubsystemBase{
                 shooter.setSpindexerManualEnabled(false);
                 break;
             case DASHBOARD:
-                shooter.preShoot(dashboardShooterRpm * kRpmToRps);
+                shooter.preShoot((dashboardShooterRpm + dashboardShooterBoostRpm) * kRpmToRps);
                 hood.moveToAngle(dashboardHoodAngleDeg);
                 intake.goHome();
                 shooter.setSpindexerManualEnabled(dashboardSpindexerEnabled);
@@ -318,7 +327,12 @@ public class Superstructure extends SubsystemBase{
         double disntance = drive.getPose().getTranslation().getDistance(Constants.FieldConstants.HUB_BLUE.toTranslation2d());
         double targetHeightMeters = Constants.FieldConstants.HUB_BLUE.getZ();
         double robotSpeedTowardHub = getRobotSpeedTowardHubMetersPerSecond();
-        HubShotSolver.Result targets =
+        HubShotSolver.Result targets = null;
+         LookUpTable.LookUpTableTest lookUpTableTest = null;
+        double shooterFinalRPM = 0;
+        double hooddeg = 0;
+        if(RobotBase.isSimulation()){
+             targets =
             HubShotSolver.bestShotWithRobotSpeed(
                 disntance,
                 targetHeightMeters,
@@ -333,16 +347,31 @@ public class Superstructure extends SubsystemBase{
             shooter.setOff();
             return;
         }
-                   
-        //Radian per sec
-        double shooterAngularVelocityRadPerSec =
+         double shooterAngularVelocityRadPerSec =
             targets.velocityMps / Units.inchesToMeters(2);
 
         //RPS
-        double shooterFinalVelocity = shooterAngularVelocityRadPerSec/(2*Math.PI);
+         shooterFinalRPM = shooterAngularVelocityRadPerSec/(2*Math.PI);
+         hooddeg = targets.angleDeg;
 
-        hood.moveToAngle(targets.angleDeg);
-        shooter.shoot(shooterFinalVelocity*1.1  );
+        }
+
+        else{
+
+               lookUpTableTest = new LookUpTable().LookUpTableOutput(disntance);
+            shooterFinalRPM = lookUpTableTest.getRPS();
+            hooddeg = lookUpTableTest.getAngle();
+        }
+
+        
+                   
+        //Radian per sec
+       
+
+        hood.moveToAngle(hooddeg);
+        double boostedShooterVelocity =
+            shooterFinalRPM * 1.1 + (dashboardShooterBoostRpm * kRpmToRps);
+        shooter.shoot(boostedShooterVelocity);
 
                 if(shooter.isAtVelocity()&& isAimedAtHub() && drive.getChassisSpeeds().omegaRadiansPerSecond< Units.degreesToRadians(2)){
                     spawnFuelShot();
@@ -418,7 +447,7 @@ public class Superstructure extends SubsystemBase{
         ChassisSpeeds robotFieldSpeeds = drive.getChassisSpeeds();
         Rotation2d shooterFacing = robotPose.getRotation();
         double hoodAngleDegrees = hood.getTargetAngleDegrees();
-        double shooterRPS = shooter.getTargetVelocity(); //rps
+        double shooterRPS = shooter.getTargetRPS(); //rps
         double shooterAngualrVelocity = shooterRPS * (2*Math.PI);
         
 

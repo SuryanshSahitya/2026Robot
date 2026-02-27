@@ -3,12 +3,15 @@ package frc.robot.subsystems.Hood;
 import org.littletonrobotics.junction.AutoLog;
 import org.littletonrobotics.junction.Logger;
 
+import com.ctre.phoenix6.configs.MotionMagicConfigs;
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.sim.CANcoderSimState;
 import com.ctre.phoenix6.sim.TalonFXSimState;
+import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 
 import edu.wpi.first.math.system.plant.DCMotor;
@@ -27,6 +30,7 @@ public class Hood extends SubsystemBase{
     private CANcoder hoodEncoder = new CANcoder(26);
       protected TalonFXConfiguration config = new TalonFXConfiguration();
         private final  MotionMagicVoltage  positionOut = new MotionMagicVoltage(0);
+
 
     private static final double kSimDtSeconds = 0.02;
     private static final double kHoodGearRatio = 100.0;
@@ -66,17 +70,32 @@ public class Hood extends SubsystemBase{
     private CANcoderSimState hoodEncoderSim;
     private SingleJointedArmSim hoodArmSim;
 
-    public Hood() {
-            config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-            config.Slot0.kG = 0;
-            config.Slot0.kS = 0;
-            config.Slot0.kP = 160;
-            config.Slot0.kD = 0;
-            config.MotionMagic.MotionMagicCruiseVelocity = 1;
-            config.MotionMagic.MotionMagicAcceleration = 4;
-            config.Feedback.withRemoteCANcoder(hoodEncoder);
-            hoodMotor.getConfigurator().apply(config);
+    private double kP = 10;
+private double kI = 0.0;  
+private double kD = 0.0;
+private double kS = 0;
+private double kV = 0.12;
+private double kA = 0;
+private double cruiseVel =  (60/360)*1.1;
+private double accel = 60/360;
+private double jerk = 0;
 
+
+    public Hood() {
+           config.Slot0 = new Slot0Configs()
+      .withKP(kP)
+      .withKI(kI)
+      .withKD(kD)
+      .withKS(kS)
+      .withKV(kV)
+      .withKA(kA)
+      ;
+  config.MotionMagic = new MotionMagicConfigs()
+      .withMotionMagicCruiseVelocity(1000)
+      .withMotionMagicAcceleration(1200)   
+      .withMotionMagicJerk(0);
+
+        config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
             if (RobotBase.isSimulation()) {
                 hoodMotorSim = hoodMotor.getSimState();
                 hoodEncoderSim = hoodEncoder.getSimState();
