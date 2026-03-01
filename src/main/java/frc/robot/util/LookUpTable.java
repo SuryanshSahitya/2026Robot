@@ -23,16 +23,16 @@ public class LookUpTable {
      */
     private static final LookUpTableEntry[] LOOKUP_TABLE = {
         // Format: distance, armPivot (0..90, larger when closer), shooterVelocity (e.g., RPM)
-        new LookUpTableEntry(1.0601, 85.0, 120),
-        new LookUpTableEntry(1.25,   78.0, 110),
-        new LookUpTableEntry(1.5,    70.0, 100),
-        new LookUpTableEntry(1.75,   62.0, 20),
-        new LookUpTableEntry(2.0,    52.0, 90),
-        new LookUpTableEntry(2.25,   45.0, 80),
-        new LookUpTableEntry(2.5,    35.0, 70),
-        new LookUpTableEntry(3.0,    20.0, 70),
-        new LookUpTableEntry(3.5,    10.0, 60),
-        new LookUpTableEntry(4.0,     5.0, 50)
+        new LookUpTableEntry(1.448, 2.6, 2623),
+        new LookUpTableEntry(1.543,   3.3, 2662),
+        new LookUpTableEntry(1.642,    3.6, 2600),
+        new LookUpTableEntry(1.889,   3.8, 2663),
+        new LookUpTableEntry(2.146,    4.1, 2663),
+        new LookUpTableEntry(2.46,   4.2, 2663),
+        new LookUpTableEntry(2.722,    4.35, 2750),
+        new LookUpTableEntry(3.032,    4.4, 2900),
+        new LookUpTableEntry(3.297,    4.4, 3001),
+        new LookUpTableEntry(4.0,     4.3, 3000)
     };
 
     public LookUpTable() {

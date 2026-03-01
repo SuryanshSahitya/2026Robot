@@ -26,8 +26,8 @@ import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
 public class Hood extends SubsystemBase{
-    private TalonFX hoodMotor = new TalonFX(25);
-    private CANcoder hoodEncoder = new CANcoder(26);
+    private TalonFX hoodMotor = new TalonFX(17);
+    private CANcoder hoodEncoder = new CANcoder(25);
       protected TalonFXConfiguration config = new TalonFXConfiguration();
         private final  MotionMagicVoltage  positionOut = new MotionMagicVoltage(0);
 
@@ -42,6 +42,7 @@ public class Hood extends SubsystemBase{
     private double targetAngleDegrees = 0.0;
     public enum WantedState {
         IDLE,
+        
         MOVING_TO_ANGLE,
     }
     public enum CurrentState {
@@ -95,7 +96,7 @@ private double jerk = 0;
       .withMotionMagicAcceleration(1200)   
       .withMotionMagicJerk(0);
 
-        config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+        config.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
             if (RobotBase.isSimulation()) {
                 hoodMotorSim = hoodMotor.getSimState();
                 hoodEncoderSim = hoodEncoder.getSimState();
@@ -118,6 +119,8 @@ private double jerk = 0;
         handleStates();
         applyStates();
         Logger.processInputs("Hood", inputs);
+        Logger.recordOutput("Hood Pos", hoodMotor.getPosition().getValueAsDouble());
+        Logger.recordOutput("Hood target pos", targetAngleDegrees);
     }
 
     @Override
@@ -147,7 +150,7 @@ private double jerk = 0;
 
     private void updateInputs() {
         double hoodAngleRotations = hoodEncoder.getPosition().getValueAsDouble();
-        inputs.hoodAngleDegrees = Units.rotationsToDegrees(hoodAngleRotations);
+        inputs.hoodAngleDegrees = hoodMotor.getPosition().getValueAsDouble();
         inputs.targetAngleDegrees = targetAngleDegrees;
         inputs.hoodAppliedVoltage = hoodMotor.getMotorVoltage().getValueAsDouble();
         inputs.hoodCurrent = hoodMotor.getStatorCurrent().getValueAsDouble();
@@ -160,13 +163,11 @@ private double jerk = 0;
 
     public boolean isAtTargetAngle() {
         double hoodAngleRotations = hoodEncoder.getPosition().getValueAsDouble();
-        double hoodAngleDegrees = Units.rotationsToDegrees(hoodAngleRotations);
-        return Math.abs(hoodAngleDegrees - targetAngleDegrees) < 1.0;
+        return Math.abs(hoodAngleRotations - targetAngleDegrees) < 0.2;
     }
       public boolean isAtTargetAngle(double targetangle) {
-        double hoodAngleRotations = hoodEncoder.getPosition().getValueAsDouble();
-        double hoodAngleDegrees = Units.rotationsToDegrees(hoodAngleRotations);
-        return Math.abs(hoodAngleDegrees - targetangle) < 1.0;
+        double hoodAngleRotations = hoodMotor.getPosition().getValueAsDouble();
+        return Math.abs(hoodAngleRotations - targetangle) < 0.2;
     }
 
     public void handleStates() {
@@ -184,10 +185,10 @@ private double jerk = 0;
         double targetRotations = Units.degreesToRotations(targetAngleDegrees);
         switch (currentState) {
             case IDLE:
-                hoodMotor.setControl(positionOut.withPosition(0));
+                hoodMotor.setControl(positionOut.withPosition(0.3));
                 break;
             case MOVING_TO_ANGLE:
-                hoodMotor.setControl(positionOut.withPosition(targetRotations));
+                hoodMotor.setControl(positionOut.withPosition(targetAngleDegrees));
                 break;
         }
     }

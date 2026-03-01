@@ -23,6 +23,7 @@ import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.MotionMagicVelocityVoltage;
+import com.ctre.phoenix6.controls.TorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -45,10 +46,10 @@ public class Shooter extends SubsystemBase {
   private final DCMotor dcMotorWheel = DCMotor.getKrakenX60(1);
   
 
-  private final TalonFX shooterLeaderMotor = new TalonFX(20);
-  private final TalonFX shooterFollower = new TalonFX(21);
-  private final TalonFX spindexerSpinnerMotor = new TalonFX(22);
-  private final TalonFX spindexerWheelMotor = new TalonFX(23);
+  private final TalonFX shooterLeaderMotor = new TalonFX(1);
+  private final TalonFX shooterFollower = new TalonFX(2);
+  private final TalonFX spindexerSpinnerMotor = new TalonFX(18);
+  private final TalonFX spindexerWheelMotor = new TalonFX(20);
 
   private static final double kSimDtSeconds = 0.02;
   private static final double kShooterSimMoi = 0.004418;
@@ -64,6 +65,7 @@ public class Shooter extends SubsystemBase {
   private DCMotorSim flyWheelSIM;
   private DCMotorSim spindexerSpinnerMotorSim;
   private DCMotorSim spindexerWheelMotorSim;
+  public boolean spindexer; 
 
 
  
@@ -105,6 +107,7 @@ public class Shooter extends SubsystemBase {
     PRE_SHOOT,
     SHOOT,
     SHOOTAREA,
+    DASHBOARD,
     TEST
 
   }
@@ -114,6 +117,7 @@ public class Shooter extends SubsystemBase {
     PRE_SHOOT,
     SHOOT,
     SHOOTAREA,
+    DASHBOARD,
     TEST
 
 
@@ -125,6 +129,7 @@ public class Shooter extends SubsystemBase {
   private double targetRPS = 0.0;
   private double spindexerPulseUntilSeconds = 0.0;
   private boolean spindexerManualEnabled = false;
+  private boolean spindexerManualReverse = false;
   private Follower follower = new Follower(shooterLeaderMotor.getDeviceID(), MotorAlignmentValue.Opposed);
 
 
@@ -178,6 +183,7 @@ public class Shooter extends SubsystemBase {
     Logger.processInputs("Shooter", inputs);
 
     Logger.recordOutput("Voltageout", shootVoltageRequest.getOutputMeasure());
+    Logger.recordOutput("spin", spindexer);
 
     handleStates();
     applyStates();
@@ -264,6 +270,9 @@ public class Shooter extends SubsystemBase {
       case SHOOTAREA:
       currentState = CurrentState.SHOOTAREA;  
         break;
+      case DASHBOARD:
+        currentState = CurrentState.DASHBOARD;
+        break;
       case TEST:
         currentState = CurrentState.TEST;
         break;
@@ -282,21 +291,42 @@ public class Shooter extends SubsystemBase {
         break;
 
       case PRE_SHOOT:
-        shooterLeaderMotor.setControl(shooterVoltage.withVelocity(targetRPS));
+      shooterLeaderMotor.setControl(shooterVoltage.withVelocity(targetRPS));
 
-        spindexerSpinnerMotor.setVoltage(2);
+      if(isAtVelocity() && spindexer){
+         spindexerSpinnerMotor.setVoltage(4.1);
+         
+        spindexerWheelMotor.setVoltage(-12);
+
+
+      }
+      else{
+                spindexerSpinnerMotor.setVoltage(0);
         spindexerWheelMotor.setVoltage(0);
+      }
+
+       
         break;
       case SHOOT:
           shooterLeaderMotor.setControl(shooterVoltage.withVelocity(targetRPS));
 
-        spindexerSpinnerMotor.setVoltage(6);
-        spindexerWheelMotor.setVoltage(5);
+        spindexerSpinnerMotor.setVoltage(4.1);
+        spindexerWheelMotor.setVoltage(-12);
         break;
       case SHOOTAREA:
         shooterLeaderMotor.setVoltage(2);;
         spindexerSpinnerMotor.setVoltage(2);
         spindexerWheelMotor.setVoltage(0);
+        break;
+
+      case DASHBOARD:
+        shooterLeaderMotor.setControl(shooterVoltage.withVelocity(targetRPS));
+        if (spindexerManualEnabled || spindexerManualReverse) {
+          setSpindexerManualVoltages();
+        } else {
+          spindexerSpinnerMotor.setVoltage(0);
+          spindexerWheelMotor.setVoltage(0);
+        }
         break;
 
       case TEST:
@@ -305,12 +335,10 @@ public class Shooter extends SubsystemBase {
     }
 
     if (Timer.getFPGATimestamp() < spindexerPulseUntilSeconds) {
-      spindexerSpinnerMotor.setVoltage(6);
-      spindexerWheelMotor.setVoltage(5);
+     setSpindexerManualVoltages();
     }
     if (spindexerManualEnabled) {
-      spindexerSpinnerMotor.setVoltage(6);
-      spindexerWheelMotor.setVoltage(5);
+      setSpindexerManualVoltages();
     }
   }
 
@@ -320,6 +348,8 @@ public class Shooter extends SubsystemBase {
   public void setOff() {
     wantedState = WantedState.OFF;
     targetRPS = 0.0;
+    spindexerManualEnabled = false;
+    spindexerManualReverse = false;
   }
 
   public double rps(){
@@ -330,12 +360,18 @@ public class Shooter extends SubsystemBase {
   public void shoot(double rps){
     targetRPS = rps;
     wantedState = WantedState.SHOOT;
+    spindexerManualEnabled = false;
+    spindexerManualReverse = false;
 
   }
 
-  public void preShoot(double rps){
+  public void preShoot(double rps,boolean spindexer){
     targetRPS = rps;
     wantedState = WantedState.PRE_SHOOT;
+    spindexerManualEnabled = false;
+    spindexerManualReverse = false;
+    this.spindexer = spindexer;
+    
   }
 
   public boolean isAtVelocity(){
@@ -350,7 +386,29 @@ public class Shooter extends SubsystemBase {
     spindexerPulseUntilSeconds = Timer.getFPGATimestamp() + kSpindexerPulseSeconds;
   }
 
+  public void dashboard(double rps, boolean spindexerEnabled, boolean spindexerReverse) {
+    targetRPS = rps;
+    wantedState = WantedState.DASHBOARD;
+    spindexerManualEnabled = spindexerEnabled;
+    spindexerManualReverse = spindexerReverse;
+  }
+
   public void setSpindexerManualEnabled(boolean enabled) {
     spindexerManualEnabled = enabled;
+    if (!enabled) {
+      spindexerManualReverse = false;
+    }
+  }
+
+  public void setSpindexerManualOverride(boolean enabled, boolean reverse) {
+    spindexerManualEnabled = enabled;
+    spindexerManualReverse = enabled && reverse;
+  }
+
+  private void setSpindexerManualVoltages() {
+    double spinnerVoltage = spindexerManualReverse ? -4.1:4.1 ;
+    double wheelVoltage = spindexerManualReverse ? 12 : -12;
+    spindexerSpinnerMotor.setVoltage(spinnerVoltage);
+    spindexerWheelMotor.setVoltage(wheelVoltage);
   }
 }

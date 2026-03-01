@@ -22,6 +22,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -39,6 +40,7 @@ import static edu.wpi.first.units.Units.Degrees;
 import static edu.wpi.first.units.Units.Meters;
 import static edu.wpi.first.units.Units.MetersPerSecond;
 
+import org.ejml.sparse.csc.decomposition.lu.LuUpLooking_DSCC;
 import org.ironmaple.simulation.SimulatedArena;
 import org.ironmaple.simulation.seasonspecific.rebuilt2026.RebuiltFuelOnFly;
 
@@ -96,22 +98,37 @@ public class Superstructure extends SubsystemBase{
         NetworkTableInstance.getDefault()
             .getDoubleTopic("/Dashboard/ShooterTargetRPM")
             .subscribe(0.0);
-    private final DoubleSubscriber hoodAngleDegSub =
+    private final BooleanSubscriber hoodInSub =
         NetworkTableInstance.getDefault()
-            .getDoubleTopic("/Dashboard/HoodAngleDeg")
+            .getBooleanTopic("/Dashboard/HoodAngleDeg")
+            .subscribe(false);
+    private final DoubleSubscriber hoodSetpointDegSub =
+        NetworkTableInstance.getDefault()
+            .getDoubleTopic("/Dashboard/HoodSetpointDeg")
             .subscribe(0.0);
     private final DoubleSubscriber shooterBoostRpmSub =
         NetworkTableInstance.getDefault()
             .getDoubleTopic("/Dashboard/ShooterBoostRPM")
             .subscribe(0.0);
+    private final BooleanSubscriber intakeInSub =
+        NetworkTableInstance.getDefault()
+            .getBooleanTopic("/Dashboard/IntakeIn")
+            .subscribe(false);
     private final BooleanSubscriber spindexerEnabledSub =
         NetworkTableInstance.getDefault()
             .getBooleanTopic("/Dashboard/Spindexer")
             .subscribe(false);
+    private final BooleanSubscriber spindexerReverseSub =
+        NetworkTableInstance.getDefault()
+            .getBooleanTopic("/Dashboard/SpindexerReverse")
+            .subscribe(false);
     private double dashboardShooterRpm = 0.0;
-    private double dashboardHoodAngleDeg = 0.0;
     private double dashboardShooterBoostRpm = 0.0;
+    private boolean dashboardIntakeIn = false;
+    private boolean dashboardHoodIn = false;
+    private double dashboardHoodSetpointDeg = 0.0;
     private boolean dashboardSpindexerEnabled = false;
+    private boolean dashboardSpindexerReverse = false;
     private long lastDashboardSetpointChange = 0;
 
     private final SwerveRequest.RobotCentric intakeRequest =
@@ -189,27 +206,56 @@ public class Superstructure extends SubsystemBase{
         driveInputs.pose = drive.getPose();
         superstructureInputs.currentState = currentState.toString();
         superstructureInputs.wantedState = wantedState.toString();
-        superstructureInputs.targetDistanceMeters = drive.getPose().getTranslation().getDistance(Constants.FieldConstants.HUB_BLUE.toTranslation2d());
+         Translation2d hubTarget =
+            DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue) == DriverStation.Alliance.Red
+                ? Constants.FieldConstants.HUB_RED.toTranslation2d()
+                : Constants.FieldConstants.HUB_BLUE.toTranslation2d();
+        superstructureInputs.targetDistanceMeters =
+            drive.getPose().getTranslation().getDistance(hubTarget);
+
     }
 
     private void updateDashboardControls() {
         long shooterChange = shooterTargetRpmSub.getLastChange();
-        long hoodChange = hoodAngleDegSub.getLastChange();
         long boostChange = shooterBoostRpmSub.getLastChange();
-        long latestChange = Math.max(shooterChange, Math.max(hoodChange, boostChange));
+        long latestChange = Math.max(shooterChange, boostChange);
         if (latestChange > lastDashboardSetpointChange) {
             lastDashboardSetpointChange = latestChange;
             dashboardShooterRpm = shooterTargetRpmSub.get();
-            dashboardHoodAngleDeg = hoodAngleDegSub.get();
             dashboardShooterBoostRpm = shooterBoostRpmSub.get();
-            wantedState = SuperstructureWantedState.DASHBOARD;
+                wantedState = SuperstructureWantedState.DASHBOARD;
+            
         }
+
+        boolean hoodIn = hoodInSub.get();
+        for (var sample : hoodInSub.readQueue()) {
+            hoodIn = sample.value;
+        }
+        dashboardHoodIn = hoodIn;
+
+        double hoodSetpointDeg = hoodSetpointDegSub.get();
+        for (var sample : hoodSetpointDegSub.readQueue()) {
+            hoodSetpointDeg = sample.value;
+        }
+        dashboardHoodSetpointDeg = hoodSetpointDeg;
+
+        boolean intakeIn = intakeInSub.get();
+        for (var sample : intakeInSub.readQueue()) {
+            intakeIn = sample.value;
+        }
+        dashboardIntakeIn = intakeIn;
 
         boolean spindexerEnabled = spindexerEnabledSub.get();
         for (var sample : spindexerEnabledSub.readQueue()) {
             spindexerEnabled = sample.value;
         }
         dashboardSpindexerEnabled = spindexerEnabled;
+
+        boolean spindexerReverse = spindexerReverseSub.get();
+        for (var sample : spindexerReverseSub.readQueue()) {
+            spindexerReverse = sample.value;
+        }
+        dashboardSpindexerReverse = spindexerReverse;
     }
 
     private void handleStates() {
@@ -220,12 +266,12 @@ public class Superstructure extends SubsystemBase{
                 
                 break;
             case DRIVING:
-            if(drive.getPose().getX() < 5.7){
-                currentState = SuperstructureCurrentState.REVUP;
-            }
-            else{                
-                currentState = SuperstructureCurrentState.DRIVING;
-                }
+            // if(drive.getPose().getX() < 5.7){
+            //     currentState = SuperstructureCurrentState.REVUP;
+            // }
+            // else{                
+            //     currentState = SuperstructureCurrentState.DRIVING;
+            //     }
                 break;
             case INTAKING:
                 currentState = SuperstructureCurrentState.INTAKING;
@@ -242,12 +288,14 @@ public class Superstructure extends SubsystemBase{
                     currentState = SuperstructureCurrentState.PRE_SHOOT;
                 }
                 break;
+            case PRE_SHOOT:
+            currentState = SuperstructureCurrentState.PRE_SHOOT;
         }
     }
     public boolean shootCheck(){
         HubShotSolver.Result target = target();
         this.target = target;
-        if( Math.abs(shooter.rps() - target.velocityMps) < 30 && hood.isAtTargetAngle(target.angleDeg) ){
+        if( Math.abs(shooter.rps() - shooter.targetShooterVelocity) < 30 && hood.isAtTargetAngle(hood.getTargetAngleDegrees()) ){
             return true;
 
         }
@@ -263,8 +311,14 @@ public class Superstructure extends SubsystemBase{
             
             case DRIVING:
                 shooter.setOff();
-                hood.setIdle();
-                intake.goHome();
+                if (dashboardHoodIn) {
+                    hood.setIdle();
+                }
+                if (dashboardIntakeIn) {
+                    intake.goHome();
+                } else {
+                    intake.stop();
+                }
                 shooter.setSpindexerManualEnabled(false);
 
                 
@@ -276,29 +330,68 @@ public class Superstructure extends SubsystemBase{
                 shooter.setSpindexerManualEnabled(false);
                 break;
             case DASHBOARD:
-                shooter.preShoot((dashboardShooterRpm + dashboardShooterBoostRpm) * kRpmToRps);
-                hood.moveToAngle(dashboardHoodAngleDeg);
-                intake.goHome();
-                shooter.setSpindexerManualEnabled(dashboardSpindexerEnabled);
+                shooter.dashboard(
+                    (dashboardShooterRpm + dashboardShooterBoostRpm) * kRpmToRps,
+                    dashboardSpindexerEnabled,
+                    dashboardSpindexerReverse);
+                if (dashboardHoodIn) {
+                    hood.setIdle();
+                } else {
+                    hood.moveToAngle(dashboardHoodSetpointDeg);
+                }
+                intake.startIntake();
                 break;
             case SHOOTING:
                 shootingPipeline();
-                shooter.setSpindexerManualEnabled(false);
+                // hood.moveToAngle(3);
+                if (dashboardSpindexerReverse) {
+                    shooter.setSpindexerManualOverride(true, true);
+                } else {
+                    shooter.setSpindexerManualEnabled(false);
+                }
                
                 break;
 
             case REVUP:
-            shooter.preShoot(35);
+            shooter.preShoot(5,false);
             hood.setIdle();
             intake.goHome();
             shooter.setSpindexerManualEnabled(false);
             break;
 
             case PRE_SHOOT:
-            shooter.preShoot(target.velocityMps);
-            hood.moveToAngle(target.angleDeg);
-            intake.goHome();
-            shooter.setSpindexerManualEnabled(false);
+                 double disntance = 0;
+        if(DriverStation.getAlliance().get() == Alliance.Red){
+            disntance = drive.getPose().getTranslation().getDistance(Constants.FieldConstants.HUB_RED.toTranslation2d());
+
+        }
+        else{
+             disntance = drive.getPose().getTranslation().getDistance(Constants.FieldConstants.HUB_RED.toTranslation2d());
+
+
+        }
+            
+               LookUpTable.LookUpTableTest lookUpTableTest = new LookUpTable().LookUpTableOutput(disntance);
+            double shooterFinalRPM = lookUpTableTest.getRPS();
+            double hooddeg = lookUpTableTest.getAngle();
+            // shooter.preShoot(target.velocityMps);
+            hood.moveToAngle(hooddeg );
+double boostedShooterVelocity =
+           ( shooterFinalRPM/60 ) + (dashboardShooterBoostRpm * kRpmToRps);
+           if (drive.getChassisSpeeds().omegaRadiansPerSecond < 2.5) {
+             shooter.preShoot(boostedShooterVelocity,true);       
+            
+           }
+           else{
+            shooter.preShoot(boostedShooterVelocity, false);
+           }
+            
+        // intake.goHome();
+            if (dashboardSpindexerReverse) {
+                shooter.setSpindexerManualOverride(true, true);
+            } else {
+                shooter.setSpindexerManualEnabled(false);
+            }
              break;
         }
 
@@ -324,7 +417,16 @@ public class Superstructure extends SubsystemBase{
 
     public void shootingPipeline(){
 
-        double disntance = drive.getPose().getTranslation().getDistance(Constants.FieldConstants.HUB_BLUE.toTranslation2d());
+        double disntance = 0;
+        if(DriverStation.getAlliance().get() == Alliance.Red){
+            disntance = drive.getPose().getTranslation().getDistance(Constants.FieldConstants.HUB_RED.toTranslation2d());
+
+        }
+        else{
+             disntance = drive.getPose().getTranslation().getDistance(Constants.FieldConstants.HUB_RED.toTranslation2d());
+
+
+        }
         double targetHeightMeters = Constants.FieldConstants.HUB_BLUE.getZ();
         double robotSpeedTowardHub = getRobotSpeedTowardHubMetersPerSecond();
         HubShotSolver.Result targets = null;
@@ -370,7 +472,8 @@ public class Superstructure extends SubsystemBase{
 
         hood.moveToAngle(hooddeg);
         double boostedShooterVelocity =
-            shooterFinalRPM * 1.1 + (dashboardShooterBoostRpm * kRpmToRps);
+            (shooterFinalRPM/60)  + (dashboardShooterBoostRpm * kRpmToRps);
+            Logger.recordOutput("boosted", boostedShooterVelocity);
         shooter.shoot(boostedShooterVelocity);
 
                 if(shooter.isAtVelocity()&& isAimedAtHub() && drive.getChassisSpeeds().omegaRadiansPerSecond< Units.degreesToRadians(2)){
@@ -392,9 +495,12 @@ public class Superstructure extends SubsystemBase{
     public void requestShooting() {
         wantedState = SuperstructureWantedState.SHOOTING;
     }
+      public void requestShootingPRE() {
+        wantedState = SuperstructureWantedState.PRE_SHOOT;
+    }
 
-    public void setTargetDistanceMeters() {
-        wantedState = SuperstructureWantedState.SHOOTING;
+    public void setTargetDistanceMeterps() {
+        wantedState = SuperstructureWantedState.PRE_SHOOT;
     }
 
     public void setTargetDistanceMeters(double distanceMeters) {
@@ -414,8 +520,12 @@ public class Superstructure extends SubsystemBase{
         }
     public Command setShooting(){
         return Commands.runOnce(() -> {
-            setTargetDistanceMeters();
             requestShooting();
+        });
+    }
+    public Command setPreshoot(){
+        return Commands.runOnce(() -> {
+            requestShootingPRE();
         });
     }
     public Command setDriving(){
@@ -525,12 +635,21 @@ public class Superstructure extends SubsystemBase{
 
     private Translation2d getHubDirection() {
         Pose2d robotPose = drive.getPose();
-        Translation2d toHub =
-            Constants.FieldConstants.HUB_BLUE.toTranslation2d().minus(robotPose.getTranslation());
-        if (toHub.getNorm() < 1e-6) {
+  Translation2d disntance = new Translation2d() ;
+        if(DriverStation.getAlliance().get() == Alliance.Red){
+            disntance = Constants.FieldConstants.HUB_RED.toTranslation2d().minus(robotPose.getTranslation());
+
+        }
+        else{
+            disntance = Constants.FieldConstants.HUB_BLUE.toTranslation2d().minus(robotPose.getTranslation());
+
+
+        }        
+     
+        if (disntance.getNorm() < 1e-6) {
             return new Translation2d(1.0, 0.0);
         }
-        return toHub.div(toHub.getNorm());
+        return disntance.div(disntance.getNorm());
     }
 
     private double getRobotSpeedTowardHubMetersPerSecond() {
@@ -542,7 +661,7 @@ public class Superstructure extends SubsystemBase{
 
     public Rotation2d getHubHeading() {
         Translation2d hubDirection = getHubDirection();
-        return new Rotation2d(hubDirection.getX(), hubDirection.getY());
+        return new Rotation2d(hubDirection.getX(), hubDirection.getY()).plus(Rotation2d.fromDegrees(180));
     }
 
     public boolean isShootingRequested() {

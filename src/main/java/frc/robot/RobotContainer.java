@@ -4,6 +4,8 @@
 
 package frc.robot;
 
+import static edu.wpi.first.units.Units.Inches;
+import static edu.wpi.first.units.Units.Meters;
 import static edu.wpi.first.units.Units.MetersPerSecond;
 import static edu.wpi.first.units.Units.RadiansPerSecond;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
@@ -22,6 +24,9 @@ import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.units.measure.LinearVelocity;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -58,8 +63,8 @@ PhotonCamera rightCam = new PhotonCamera("RightCam");
 
 // robotToCam: translation (x forward, y left, z up) and rotation (roll, pitch, yaw)
 Transform3d robotToLeftCam  = new Transform3d(
-    new Translation3d(0.25, 0.18, 0.45),
-    new Rotation3d(0.0, Math.toRadians(-15), Math.toRadians(10))
+    new Translation3d(Units.inchesToMeters(2), Units.inchesToMeters(0.003), Units.inchesToMeters(17)),
+    new Rotation3d(0.0, Math.toRadians(-15), Math.toRadians(180))
 );
 
 Transform3d robotToRightCam = new Transform3d(
@@ -174,7 +179,7 @@ driveSub.setDefaultCommand(DriveCommands.joystickDrive(
             joystick.leftTrigger(0.2).onTrue(superstructure.setIntake()).onFalse(superstructure.setDriving());
             joystick.rightTrigger(0.2)
                 .onTrue(Commands.sequence(
-                    superstructure.setShooting()))
+                    superstructure.setPreshoot()))
                 .onFalse(superstructure.setDriving());
 
 
@@ -185,7 +190,7 @@ driveSub.setDefaultCommand(DriveCommands.joystickDrive(
 
 
                 
-            joystick.x().onTrue(Commands.runOnce(()-> clearSimGamePieces()));
+            joystick.y().onTrue(Commands.runOnce(()->superstructure.setDriving()));
 
             joystick.x().whileTrue(Commands.runOnce(()-> driveSub.setPose(new Pose2d(driveSub.getPose().getX(),driveSub.getPose().getY(),new Rotation2d())))); 
 
@@ -195,7 +200,9 @@ driveSub.setDefaultCommand(DriveCommands.joystickDrive(
   }
 
   public Command getAutonomousCommand() {
-    return Commands.print("No autonomous command configured");
+    return Commands.run(() -> driveSub.runVelocity(new ChassisSpeeds(1, 0, 0)), driveSub)
+        .withTimeout(1.0)
+        .andThen(Commands.runOnce(driveSub::stop, driveSub));
   }
 
   public void resetSimOnEnable() {

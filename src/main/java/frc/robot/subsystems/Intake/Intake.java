@@ -31,8 +31,8 @@ import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
 public class Intake extends SubsystemBase{
-    private TalonFX intakeMotor = new TalonFX(30);
-    private TalonFX intakeWheels = new TalonFX(31);
+    private TalonFX intakeMotor = new TalonFX(11);
+    private TalonFX intakeWheels = new TalonFX(16);
         Distance radius = Inches.of(1.5);
 
         double moi = Pounds.of(8.0).in(Kilograms) * Math.pow(radius.in(Meters), 2);
@@ -61,12 +61,12 @@ public class Intake extends SubsystemBase{
     TalonFXConfiguration talonFXConfigs = new TalonFXConfiguration();
 
     private static final double kSimDtSeconds = 0.02;
-    private static final double kIntakePositionRotations = 42.0;
+    private static final double kIntakePositionRotations = 17.3;
     private static final double kHomePositionRotations = 0.0;
-    private static final double kIntakeVoltage = 6.0;
+    private static final double kIntakeVoltage = 9;
     private static final double kHomingVoltage = -6.0;
     private static final double kPositionToleranceRotations = 1.0;
-    private static final double kIntakeP = 0.2;
+    private static final double kIntakeP = 0.5;
     private static final double kIntakeI = 0.0;
     private static final double kIntakeD = 0.0;
     private static final double kMaxIntakePidVoltage = 8.0;
@@ -224,10 +224,11 @@ public class Intake extends SubsystemBase{
                     intakePid.reset();
                 } else {
                     double output = intakePid.calculate(pos, kIntakePositionRotations);
+                    
                     output = Math.max(-kMaxIntakePidVoltage, Math.min(kMaxIntakePidVoltage, output));
                     intakeMotor.setVoltage(output);
                 }
-                intakeWheels.setVoltage(kIntakeVoltage);
+                intakeWheels.setVoltage(-kIntakeVoltage);
 
 
                 break;
