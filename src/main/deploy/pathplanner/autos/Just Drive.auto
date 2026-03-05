@@ -1,0 +1,37 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Start Off"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "To 26"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Pick up 26"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "To Box"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}

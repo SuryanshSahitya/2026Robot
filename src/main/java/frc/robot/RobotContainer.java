@@ -13,6 +13,7 @@ import static edu.wpi.first.units.Units.RotationsPerSecond;
 import org.ironmaple.simulation.SimulatedArena;
 import org.ironmaple.simulation.drivesims.SwerveDriveSimulation;
 import org.ironmaple.simulation.seasonspecific.rebuilt2026.RebuiltFuelOnField;
+import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 import org.photonvision.PhotonCamera;
 
 import com.ctre.phoenix6.swerve.SwerveRequest;
@@ -27,13 +28,14 @@ import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.LinearVelocity;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
-
+import edu.wpi.first.wpilibj2.command.ParallelDeadlineGroup;
 import frc.robot.commands.DriveCommands;
 import frc.robot.generated.TunerConstants;
-import frc.robot.subsystems.Superstructure;
 import frc.robot.subsystems.Hood.Hood;
 import frc.robot.subsystems.Intake.Intake;
 import frc.robot.subsystems.Shooter.Shooter;
@@ -47,8 +49,12 @@ import frc.robot.subsystems.drive.ModuleIOTalonFXSim;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.subsystems.vision.VisionIOPhotonVision;
 import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
+import frc.robot.util.HubShotSolver;
 import frc.robot.util.TunableController;
 import frc.robot.subsystems.vision.VisionIO;
+
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
 
 
 public class RobotContainer {
@@ -58,6 +64,9 @@ PhotonCamera rightCam = new PhotonCamera("RightCam");
     private SwerveDriveSimulation driveSimulation = null;
         private final Drive driveSub;
             private final Vision visionpose;
+
+private final LoggedDashboardChooser<Command> autoChooser;
+
 
 
 
@@ -85,7 +94,6 @@ Transform3d robotToRightCam = new Transform3d(
                     private double MaxAngularRatealighn = RotationsPerSecond.of(10).in(RadiansPerSecond); // 3/4 of a rotation per second max angular velocity
 
     private double MaxSpeed = 1.0 * TunerConstants.kSpeedAt12Volts.in(MetersPerSecond); // kSpeedAt12Volts desired top speed
-    private final Superstructure superstructure;
 
 
     private final SwerveRequest.FieldCentric drive = new SwerveRequest.FieldCentric()
@@ -112,7 +120,7 @@ Transform3d robotToRightCam = new Transform3d(
                         (pose) -> {});
                 this.visionpose = new Vision(
                         driveSub,
-                        new VisionIOPhotonVision("shooter", robotToLeftCam)
+                        new VisionIOPhotonVision("LeftCam", robotToLeftCam)
                        );
 
                 break;
@@ -154,7 +162,6 @@ Transform3d robotToRightCam = new Transform3d(
 
                 break;
         }
-        superstructure = new Superstructure(driveSub, shooter, hood, intake);
 
         
 
@@ -164,7 +171,22 @@ Transform3d robotToRightCam = new Transform3d(
       // In simulation, reset pose to origin on start
       driveSub.setPose(new Pose2d(3,3,new Rotation2d()));
     }
-  }
+
+
+
+//Suryansh
+    NamedCommands.registerCommand("Shoot_noTime", Commands.run(() -> {shooter.shoot(32.0); hood.moveToAngle(3);}));
+    NamedCommands.registerCommand("Shoot", Commands.run(() -> {shooter.shoot(32.0); hood.moveToAngle(3);}).withTimeout(5));
+    NamedCommands.registerCommand("Intake", Commands.run(()->{intake.startIntake();}));
+    NamedCommands.registerCommand("IntakeJerk", Commands.run(()->intake.SuryanshStupidcmd()).withTimeout(5));
+    NamedCommands.registerCommand("Stopshoot", Commands.run(()->shooter.setOff()));
+
+
+//suryansh
+    autoChooser = new LoggedDashboardChooser<>("Auto Choices", AutoBuilder.buildAutoChooser());
+  
+
+}
 
   private void configureBindings() {
 
@@ -173,36 +195,27 @@ Transform3d robotToRightCam = new Transform3d(
 driveSub.setDefaultCommand(DriveCommands.joystickDrive(
                 driveSub, () -> -joystick.getLeftY(), () -> -joystick.getLeftX(), () -> -joystick.getRightX()));
 
-                joystick.rightTrigger(0.2).whileTrue(DriveCommands.joystickDriveAtAngle(driveSub, ()-> -joystick.getLeftY(), ()-> -joystick.getLeftX(),()-> (superstructure.getHubHeading())));
-
-
-            joystick.leftTrigger(0.2).onTrue(superstructure.setIntake()).onFalse(superstructure.setDriving());
-            joystick.rightTrigger(0.2)
-                .onTrue(Commands.sequence(
-                    superstructure.setPreshoot()))
-                .onFalse(superstructure.setDriving());
-
-
-                 joystick.a()
-                .onTrue(Commands.sequence(
-                    superstructure.setShooting()))
-                .onFalse(superstructure.setDriving());
-
-
-                
-            joystick.y().onTrue(Commands.runOnce(()->superstructure.setDriving()));
+joystick.rightTrigger(0.2).whileTrue(
+    Commands.run(() -> {
+        shooter.shoot(32.0);
+        hood.moveToAngle(3);
+    })).whileFalse(Commands.run(()-> {shooter.shoot(0); hood.moveToAngle(0);})); // Stop shooter and reset hood when trigger released
+    
+    joystick.leftTrigger(0.2).whileTrue(Commands.run(()->{intake.startIntake();
+      
+    
+    })).whileFalse(Commands.run(()-> intake.goHome()));
 
             joystick.x().whileTrue(Commands.runOnce(()-> driveSub.setPose(new Pose2d(driveSub.getPose().getX(),driveSub.getPose().getY(),new Rotation2d())))); 
-
+     
+            joystick.a().onTrue(Commands.runOnce(() -> driveSub.zeroGyro()));
 
     
     
   }
 
   public Command getAutonomousCommand() {
-    return Commands.run(() -> driveSub.runVelocity(new ChassisSpeeds(1, 0, 0)), driveSub)
-        .withTimeout(1.0)
-        .andThen(Commands.runOnce(driveSub::stop, driveSub));
+         return autoChooser.get();
   }
 
   public void resetSimOnEnable() {
@@ -237,7 +250,6 @@ driveSub.setDefaultCommand(DriveCommands.joystickDrive(
   }
 
   private void spawnFuelShot() {
-    superstructure.spawnFuelShot();
   }
 
    public void resetSimulationField() {

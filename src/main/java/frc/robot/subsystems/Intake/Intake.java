@@ -18,9 +18,13 @@ import edu.wpi.first.units.measure.Distance;
 import edu.wpi.first.wpilibj.DutyCycle;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 import edu.wpi.first.wpilibj.simulation.ElevatorSim;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+//suryansh
+import edu.wpi.first.wpilibj.Timer;
+
 
 import static edu.wpi.first.units.Units.Inches;
 import static edu.wpi.first.units.Units.Kilograms;
@@ -37,7 +41,9 @@ public class Intake extends SubsystemBase{
 
         double moi = Pounds.of(8.0).in(Kilograms) * Math.pow(radius.in(Meters), 2);
 
-
+// suryansh
+private double lastSwitchTime = 0;
+private boolean forward = true;
 
 
     @AutoLog
@@ -236,8 +242,11 @@ public class Intake extends SubsystemBase{
                 double p = intakeMotor.getPosition().getValueAsDouble();
                 double homeOutput = intakePid.calculate(p, kHomePositionRotations);
                 homeOutput = Math.max(-kMaxIntakePidVoltage, Math.min(kMaxIntakePidVoltage, homeOutput));
-                intakeMotor.setVoltage(homeOutput);
-                intakeWheels.setVoltage(0);
+                
+                
+                // Suryansh
+                intakeMotor.setVoltage(homeOutput*0.75);
+                intakeWheels.setVoltage(4.5);
 
                 break;
         }
@@ -257,6 +266,29 @@ public class Intake extends SubsystemBase{
     /** Stop all intake activity and hold position. */
     public void stop() {
         wantedState = WantedState.IDLE;
+    }
+
+    // Obviously suryansh
+    public void SuryanshStupidcmd() {
+
+        double currentTime = Timer.getFPGATimestamp();
+
+        if (currentTime - lastSwitchTime >= 2.0) {
+            forward = !forward;
+            lastSwitchTime = currentTime;
+        }
+
+        double p = intakeMotor.getPosition().getValueAsDouble();
+        double homeOutput = intakePid.calculate(p, kHomePositionRotations);
+        homeOutput = Math.max(-kMaxIntakePidVoltage, Math.min(kMaxIntakePidVoltage, homeOutput));
+
+        if (forward) {
+            intakeMotor.setVoltage(homeOutput);
+            intakeWheels.setVoltage(4.5);
+        } else {
+            intakeMotor.setVoltage(-homeOutput);
+            intakeWheels.setVoltage(-4.5);
+        }
     }
 
     
